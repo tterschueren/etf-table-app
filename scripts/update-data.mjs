@@ -21,7 +21,7 @@ const GROUPS = [
   ["^GDAXI", "VWCE.DE"],
 ];
 
-async function fetchSpark(symbols, useProxy, range = "3y") {
+async function fetchSpark(symbols, useProxy, range = "5y") {
   const host = useProxy ? "https://r.jina.ai/https://query1.finance.yahoo.com" : "https://query1.finance.yahoo.com";
   const url = host + "/v7/finance/spark?symbols=" + symbols.join(",") + "&range=" + range + "&interval=1d";
   const res = await fetch(url);
@@ -149,16 +149,17 @@ const lines = blocks.map((block) =>
 );
 
 // --- Wahrungskurse: 1 EUR in Fremdwaehrung plus Veraenderungen ---
-// Zeilen: 1M (rolling 30 Tage), +3M (Scheibe Tage 30-121), 1Y, 2Y, 3Y.
+// Zeilen: 4W (rolling 30 Tage), 3M (Scheibe Tage 30-121), Y1, Y2, Y3.
+// Leitzinsen entfallen (irrelevant fuer die Tagesanalyse).
 // Leitzinsen: automatisch von FRED (fredgraph.csv, kein API-Key noetig).
 // ECB = Einlagensatz (ECBDFR), USD = Effective Fed Funds (FEDFUNDS),
-// GBP/JPY/AUD = OECD-Referenzzins (IRSTCI01-Reihen, monatlich, folgen dem
-// Leitzins eng). CHF/CNY/BR: keine FRED-Reihe, daher "-" bzw. Fallback.
+// GBP/JPY/AUD/BR = OECD-Referenzzins (IRSTCI01-Reihen, monatlich, folgen dem
+// Leitzins eng). CHF/CNY: FRED-Reihen veraltet, daher "-".
 // Bei Fehlern bleibt der zuletzt bekannte Wert aus RATES_FALLBACK stehen.
-const RATES_FALLBACK = { ECB: "2.5", USD: "3.9", JPY: "0.8", GBP: "3.8", CNY: "-",
-  CHF: "0", AUD: "4.9", BR: "-" };
+const RATES_FALLBACK = { ECB: "2.5", USD: "3.9", JPY: "1.0", GBP: "3.7", CNY: "-",
+  CHF: "-", AUD: "4.4", BR: "13.9" };
 const RATE_SERIES = { ECB: "ECBDFR", USD: "FEDFUNDS", GBP: "IRSTCI01GBM156N",
-  JPY: "IRSTCI01JPM156N", AUD: "IRSTCI01AUM156N" };
+  JPY: "IRSTCI01JPM156N", AUD: "IRSTCI01AUM156N", BR: "IRSTCI01BRM156N" };
 async function fetchFredRate(sym) {
   for (const host of ["https://fred.stlouisfed.org/graph/fredgraph.csv?id=",
                       "https://r.jina.ai/https://fred.stlouisfed.org/graph/fredgraph.csv?id="]) {
@@ -177,6 +178,7 @@ for (const rn of Object.keys(RATE_SERIES)) {
   const v = await fetchFredRate(RATE_SERIES[rn]);
   if (v) RATES[rn] = v;
 }
+
 const FX = [["USD", "EURUSD=X"], ["JPY", "EURJPY=X"], ["GBP", "EURGBP=X"], ["CNY", "EURCNY=X"],
   ["CHF", "EURCHF=X"], ["AUD", "EURAUD=X"], ["BR", "EURBRL=X"]];
 const fxRaw = {};
@@ -216,7 +218,7 @@ for (const [n, sym] of FX) {
 // Spalten aufsteigend nach 1-Jahres-Verlust des Euro sortieren
 fxRows.sort((a, b) => (parseFloat(a.y) || 0) - (parseFloat(b.y) || 0));
 const currLines = fxRows.map((c) =>
-  '  { n: "' + c.n + '", r: "' + c.r + '", m: ' + q(c.m) + ', s3m: ' + q(c.s3m) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
+  '  { n: "' + c.n + '", r: ' + q(c.r) + ', m: ' + q(c.m) + ', s3m: ' + q(c.s3m) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
 ).join(",\n");
 
 // --- Indikatoren: VIX, 10Y, SOX, CU, GLD, OIL, GAS ---
