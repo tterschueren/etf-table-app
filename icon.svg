@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" fill="#000"/>
+  <text x="90" y="105" font-family="monospace" font-size="56" font-weight="bold"
+        text-anchor="middle" fill="#ffffff">ETF</text>
+</svg>
