@@ -1,0 +1,42 @@
+name: Daten holen, bauen, veroeffentlichen
+
+on:
+  schedule:
+    - cron: "30 23 * * 2-6"   # Di-Sa 23:30 UTC = 00:30 MEZ (nach US-Close)
+  workflow_dispatch: {}        # manueller Start moeglich
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Abhaengigkeiten
+        run: npm install
+      - name: Kurse holen (Yahoo + FRED)
+        run: node scripts/update-data.mjs
+      - name: Vite-Build
+        run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
