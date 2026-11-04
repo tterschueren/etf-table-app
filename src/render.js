@@ -103,6 +103,10 @@ function drawCurrencies(ctx, W, curr, ecb) {
   }
   ctx.fillStyle = C_TXT;
   for (let r = 0; r < FX_PERIODS.length; r++) ctx.fillText(FX_PERIODS[r], LW, 33 + r * 12);
+
+  // Trennstrich zwischen 3M und Y1 (wie bei den ETF-Bloecken, volle Breite)
+  ctx.fillStyle = C_LINE;
+  ctx.fillRect(0, 49, W, 1);
 }
 
 // Indikatoren-Tabelle: Werte von links nach rechts, Zeiträume von oben nach
@@ -138,6 +142,10 @@ export function drawIndicators(ctx, W, ind, top) {
       drawVal(ctx, f[r], LW + (i + 1) * colW, y);
     }
   }
+
+  // Trennstrich zwischen 3M und Y1 (wie bei den ETF-Bloecken, volle Breite)
+  ctx.fillStyle = C_LINE;
+  ctx.fillRect(0, top + 49, W, 1);
 }
 
 export function render(ctx, W, blocks, curr, ind, ecb) {
