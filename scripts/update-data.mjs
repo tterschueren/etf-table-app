@@ -77,11 +77,6 @@ function at(pts, limitTs) {
   return lo;
 }
 
-function pctRound(x) {
-  const r = Math.sign(x) * Math.round(Math.abs(x)); // haelfte weg von null
-  return r === 0 ? 0 : r;
-}
-
 // Anzeige-String: ganze Zahl bei zweistelligem Wert,
 // eine Nachkommastelle bei einstelligem (halbe weg von null)
 function display(x) {
@@ -126,6 +121,7 @@ for (const name of NAMES) {
     day: display(win(2, 0)),
     w1: display(win(8, 2)), w2: display(win(15, 9)), w3: display(win(22, 16)), w4: display(win(28, 21)),
     m2: display(win(60, 30)), m3: display(win(90, 60)),
+    m4s: display(win(122, 91)), // Scheibe Tage 91-122 (Monat nach 3M)
     y1x: y1, y2: display(win(730, 365)), y3: display(win(1095, 730)),
     y1: display(y1),
   };
@@ -148,11 +144,12 @@ const q = (s) => (s == null ? "null" : '"' + s + '"');
 const blocks = [result.slice(0, 7), result.slice(7, 14)];
 const lines = blocks.map((block) =>
   "  [\n" + block.map((c) =>
-    '    { name: "' + c.name + '", v: [' + q(c.day) + ", " + q(c.w1) + ", " + q(c.w2) + ", " + q(c.w3) + ", " + q(c.w4) + ", " + q(c.m2) + ", " + q(c.m3) + ", " + q(c.y1) + ", " + q(c.y2) + ", " + q(c.y3) + "] }"
+    '    { name: "' + c.name + '", v: [' + q(c.day) + ", " + q(c.w1) + ", " + q(c.w2) + ", " + q(c.w3) + ", " + q(c.w4) + ", " + q(c.m2) + ", " + q(c.m3) + ", " + q(c.m4s) + ", " + q(c.y1) + ", " + q(c.y2) + ", " + q(c.y3) + "] }"
   ).join(",\n") + "\n  ]"
 );
 
-// --- Wahrungskurse: 1 EUR in Fremdwaehrung plus 30/365-Tage-Veraenderung ---
+// --- Wahrungskurse: 1 EUR in Fremdwaehrung plus Veraenderungen ---
+// Zeilen: 1M (rolling 30 Tage), +3M (Scheibe Tage 30-121), 1Y, 2Y, 3Y.
 // Leitzinsen: automatisch von FRED (fredgraph.csv, kein API-Key noetig).
 // ECB = Einlagensatz (ECBDFR), USD = Effective Fed Funds (FEDFUNDS),
 // GBP/JPY/AUD = OECD-Referenzzins (IRSTCI01-Reihen, monatlich, folgen dem
@@ -200,20 +197,17 @@ for (const [n, sym] of FX) {
     if (cutPts.length > 1) lastTs = cutPts[cutPts.length - 1][0];
   }
   const now = at(pts, lastTs);
-  const w7 = at(pts, lastTs - 7 * DAY);
   const m30 = at(pts, lastTs - 30 * DAY);
+  const p30 = at(pts, lastTs - 30 * DAY), p121 = at(pts, lastTs - 121 * DAY);
   const y365 = at(pts, lastTs - 365 * DAY);
   const y730 = at(pts, lastTs - 730 * DAY);
   const y1095 = at(pts, lastTs - 1095 * DAY);
-  // 4M-Anker: Stand vor rund 121 Tagen
-  const m121 = at(pts, lastTs - 121 * DAY);
-  
+
   fxRows.push({
     n,
     r: RATES[n] || "-",
-    w: display(w7 && now ? (now[1] / w7[1] - 1) * 100 : null),
     m: display(m30 && now ? (now[1] / m30[1] - 1) * 100 : null),
-    m4: display(m121 && now ? (now[1] / m121[1] - 1) * 100 : null),
+    s3m: display(p30 && p121 ? (p30[1] / p121[1] - 1) * 100 : null),
     y: display(y365 && now ? (now[1] / y365[1] - 1) * 100 : null),
     y2: display(y365 && y730 ? (y365[1] / y730[1] - 1) * 100 : null),
     y3: display(y730 && y1095 ? (y730[1] / y1095[1] - 1) * 100 : null),
@@ -222,16 +216,18 @@ for (const [n, sym] of FX) {
 // Spalten aufsteigend nach 1-Jahres-Verlust des Euro sortieren
 fxRows.sort((a, b) => (parseFloat(a.y) || 0) - (parseFloat(b.y) || 0));
 const currLines = fxRows.map((c) =>
-  '  { n: "' + c.n + '", r: "' + c.r + '", w: ' + q(c.w) + ', m: ' + q(c.m) + ', m4: ' + q(c.m4) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
+  '  { n: "' + c.n + '", r: "' + c.r + '", m: ' + q(c.m) + ', s3m: ' + q(c.s3m) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
 ).join(",\n");
 
-// --- Indikatoren: Gold, Brent, Gas, Kupfer, SOX (%), US 10J (bp), VIX (%) ---
-// Nur VIX invertiert: rot = Volatilitaet gestiegen. 10Y wie Rohstoffe:
-// rot = Wert gefallen, weiss = gestiegen (einheitliche Regel).
+// --- Indikatoren: VIX, 10Y, SOX, CU, GLD, OIL, GAS ---
+// Zeilen (feste Reihenfolge, nicht sortiert): 1W (Tage 0-7), +3W (Scheibe
+// Tage 8-29), +3M (Scheibe Tage 30-121), 1Y/2Y/3Y rolling.
+// Nur VIX invertiert: rot = Volatilitaet gestiegen. 10Y in Basispunkten.
+// Rot = Wert gefallen, weiss = gestiegen (einheitliche Regel).
 const INDS = [["GLD", "GC=F"], ["OIL", "BZ=F"], ["GAS", "NG=F"], ["CU", "HG=F"], ["SOX", "^SOX"], ["10Y", "^TNX"], ["VIX", "^VIX"]];
+const IND_ORDER = ["VIX", "10Y", "SOX", "CU", "GLD", "OIL", "GAS"];
 const indRows = [];
 let vixLevel = "21";   // Fallback, wird beim Abruf ueberschrieben
-let vixC = { w: "null", m: "null", m4: "null", y: "null", y2: "null", y3: "null" };
 for (const [n, sym] of INDS) {
   let pts = null;
   for (let useProxy = true; useProxy !== null; useProxy = useProxy ? false : null) {
@@ -244,47 +240,64 @@ for (const [n, sym] of INDS) {
     if (cutPts.length > 1) lastTs = cutPts[cutPts.length - 1][0];
   }
   const now = at(pts, lastTs);
-  const w7 = at(pts, lastTs - 7 * DAY), m30 = at(pts, lastTs - 30 * DAY);
+  const w7 = at(pts, lastTs - 7 * DAY);
+  const p8 = at(pts, lastTs - 8 * DAY), p29 = at(pts, lastTs - 29 * DAY);
+  const p30 = at(pts, lastTs - 30 * DAY), p121 = at(pts, lastTs - 121 * DAY);
   const y1a = at(pts, lastTs - 365 * DAY), y2a = at(pts, lastTs - 730 * DAY), y3a = at(pts, lastTs - 1095 * DAY);
-  // 4M-Anker: Stand vor rund 121 Tagen
-  const m121 = at(pts, lastTs - 121 * DAY);
-  
+
   if (n === "VIX") {
-    // fester VIX-Block: Stand plus invertierte Veraenderungen (rot = Angst gestiegen)
+    // VIX-Zeile: Label = aktueller Stand, Veraenderungen invertiert (rot = Angst gestiegen)
     vixLevel = String(Math.round(now[1]));
     const ivp = (t) => (t && now ? -((now[1] / t[1] - 1) * 100) : null);
-    const ds = (x) => (x == null ? "null" : '"' + display(x) + '"');
-    vixC = { w: ds(ivp(w7)), m: ds(ivp(m30)), m4: ds(ivp(m121)), y: ds(ivp(y1a)), y2: ds(y1a && y2a ? -((y1a[1] / y2a[1] - 1) * 100) : null), y3: ds(y2a && y3a ? -((y2a[1] / y3a[1] - 1) * 100) : null) };
-    continue; // keine eigene Spalte im sortierten Block
+    indRows.push({
+      n, lvl: vixLevel,
+      w: display(ivp(w7)),
+      s3w: display(p8 && p29 ? -((p8[1] / p29[1] - 1) * 100) : null),
+      s3m: display(p30 && p121 ? -((p30[1] / p121[1] - 1) * 100) : null),
+      y: display(ivp(y1a)),
+      y2: display(y1a && y2a ? -((y1a[1] / y2a[1] - 1) * 100) : null),
+      y3: display(y2a && y3a ? -((y2a[1] / y3a[1] - 1) * 100) : null),
+    });
+    continue;
   }
-  const inv = (x) => (x == null ? null : -x);
   const s = (x) => (x == null ? "null" : String(Math.round(x * 10) / 10));
   if (n === "10Y") {
     // Basispunkte, einheitliche Regel: ROT = Wert gefallen, WEISS = gestiegen
     const bp = (t) => (t && now ? Math.round((now[1] - t[1]) * 100) : null);
-    indRows.push({ n, lvl: now[1].toFixed(2), w: s(bp(w7)), m: s(bp(m30)), m4: s(bp(m121)), y: s(bp(y1a)), y2: s(y1a && y2a ? Math.round((y1a[1] - y2a[1]) * 100) : null), y3: s(y2a && y3a ? Math.round((y2a[1] - y3a[1]) * 100) : null) });
+    indRows.push({
+      n, lvl: now[1].toFixed(2),
+      w: s(bp(w7)),
+      s3w: s(p8 && p29 ? Math.round((p8[1] - p29[1]) * 100) : null),
+      s3m: s(p30 && p121 ? Math.round((p30[1] - p121[1]) * 100) : null),
+      y: s(bp(y1a)),
+      y2: s(y1a && y2a ? Math.round((y1a[1] - y2a[1]) * 100) : null),
+      y3: s(y2a && y3a ? Math.round((y2a[1] - y3a[1]) * 100) : null),
+    });
   } else {
     const pct = (t) => (t && now ? (now[1] / t[1] - 1) * 100 : null);
     indRows.push({
       n,
       lvl: n === "GLD" ? String(Math.round(now[1])) : (n === "SOX" ? String(Math.round(now[1])) : now[1].toFixed(1)),
-      w: display(pct(w7)), m: display(pct(m30)), m4: display(pct(m121)), y: display(pct(y1a)),
+      w: display(pct(w7)),
+      s3w: display(p8 && p29 ? (p8[1] / p29[1] - 1) * 100 : null),
+      s3m: display(p30 && p121 ? (p30[1] / p121[1] - 1) * 100 : null),
+      y: display(pct(y1a)),
       y2: display(y1a && y2a ? (y1a[1] / y2a[1] - 1) * 100 : null),
       y3: display(y2a && y3a ? (y2a[1] / y3a[1] - 1) * 100 : null),
     });
   }
 }
-// Spalten absteigend nach exaktem 1-Jahres-Wert sortieren (wie ETF-Bloecke)
-indRows.sort((a, b) => (parseFloat(b.y) || -Infinity) - (parseFloat(a.y) || -Infinity));
+// feste Reihenfolge: VIX, 10Y, SOX, CU, GLD, OIL, GAS
+indRows.sort((a, b) => IND_ORDER.indexOf(a.n) - IND_ORDER.indexOf(b.n));
 const indLines = indRows.map((c) =>
-  '  { n: "' + c.n + '", w: ' + q(c.w) + ', m: ' + q(c.m) + ', m4: ' + q(c.m4) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
+  '  { n: "' + c.n + '", lvl: "' + c.lvl + '", w: ' + q(c.w) + ', s3w: ' + q(c.s3w) + ', s3m: ' + q(c.s3m) + ', y: ' + q(c.y) + ', y2: ' + q(c.y2) + ', y3: ' + q(c.y3) + " }"
 ).join(",\n");
 
 const updated = new Date().toISOString().slice(0, 10);
 const out = "// Automatisch generiert von scripts/update-data.mjs (nicht von Hand editieren).\n"
-  + "// v = [1D, 1W, 2W, 3W, 4W, 2M, 3M, 1Y, 2Y, 3Y] als Anzeige-Strings (ganze Zahl zweistellig, sonst eine Nachkommastelle),\n"
+  + "// v = [1D, 1W, 2W, 3W, 4W, 2M, 3M, 4M (Scheibe Tage 91-122), 1Y, 2Y, 3Y] als Anzeige-Strings,\n"
   + "// null = Zeitraum fehlt (kurze Historie). Stand: " + updated + "\n"
-  + 'export const UPDATED = "' + updated + '";\nexport const ECB_RATE = "' + RATES.ECB + '";\nexport const VIX_LEVEL = "' + vixLevel + '";\nexport const VIX_CHANGES = { w: ' + vixC.w + ', m: ' + vixC.m + ', m4: ' + vixC.m4 + ', y: ' + vixC.y + ', y2: ' + vixC.y2 + ', y3: ' + vixC.y3 + ' };\nexport const CURRENCIES = [\n' + currLines + '\n];\nexport const INDICATORS = [\n' + indLines + '\n];\nexport const BLOCKS = [\n'
+  + 'export const UPDATED = "' + updated + '";\nexport const ECB_RATE = "' + RATES.ECB + '";\nexport const VIX_LEVEL = "' + vixLevel + '";\nexport const CURRENCIES = [\n' + currLines + '\n];\nexport const INDICATORS = [\n' + indLines + '\n];\nexport const BLOCKS = [\n'
   + lines.join(",\n") + "\n];\n";
 
 writeFileSync(new URL("../src/data.js", import.meta.url), out);
