@@ -35,8 +35,10 @@ function sep(ctx, W, y) {
 
 function drawVal(ctx, v, cx, y) {
   if (v == null) return;
+  const txt = v.replace(/^-/, ""); // Minus nicht anzeigen, Farbe zeigt das Vorzeichen
+  if (txt === "") return; // "-" (z.B. kein Leitzins verfuegbar) = Zelle bleibt leer
   ctx.fillStyle = color(v);
-  ctx.fillText(v.replace(/^-/, ""), cx, y); // Minus nicht anzeigen, Farbe zeigt das Vorzeichen
+  ctx.fillText(txt, cx, y);
 }
 
 function drawBlock(ctx, W, block, top) {
