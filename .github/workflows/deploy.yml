@@ -1,6 +1,8 @@
 name: Daten holen, bauen, veroeffentlichen
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "30 23 * * 2-6"   # Di-Sa 23:30 UTC = 00:30 MEZ (nach US-Close)
   workflow_dispatch: {}        # manueller Start moeglich
